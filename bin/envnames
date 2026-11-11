@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""List variable names from .env files (or the environment) without their values.
+
+  envnames              names in every .env file of this project
+  envnames FILE...      names in the given files
+  envnames --process    names in the current environment
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "lib"))
+import secret_guard as sg  # noqa: E402
+
+
+def describe(name, value):
+    tag = "secret" if sg.is_secret(name, value) else ("empty" if not value else "")
+    return f"  {name}" + (f"  ({tag})" if tag else "")
+
+
+def main(argv):
+    if "-h" in argv or "--help" in argv:
+        print(__doc__.strip())
+        return 0
+    if "--process" in argv:
+        print("environment:")
+        for name in sorted(os.environ):
+            print(describe(name, os.environ[name]))
+        return 0
+    files = argv or sg.find_env_files(os.getcwd())
+    if not files:
+        print("no .env files found", file=sys.stderr)
+        return 1
+    for path in files:
+        print(f"{os.path.relpath(path)}:")
+        for name, value in sg.parse_env_file(path).items():
+            print(describe(name, value))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

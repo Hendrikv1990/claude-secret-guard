@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""Set a variable in a .env file without the value appearing on screen.
+
+  envset NAME --stdin [--file .env]         value from stdin
+  envset NAME --clipboard [--file .env]     value from the clipboard (macOS pbpaste)
+  envset NAME --generate [N] [--file .env]  new random value, N bytes (default 32)
+
+Replaces the line if NAME exists, otherwise appends it. Prints only the fingerprint.
+"""
+
+import argparse
+import os
+import re
+import secrets
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "lib"))
+import secret_guard as sg  # noqa: E402
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("name")
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--stdin", action="store_true")
+    src.add_argument("--clipboard", action="store_true")
+    src.add_argument("--generate", nargs="?", const=32, type=int, metavar="N")
+    ap.add_argument("--file", default=".env")
+    a = ap.parse_args()
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", a.name):
+        ap.error("invalid variable name")
+    if a.stdin:
+        value = sys.stdin.read().rstrip("\n")
+    elif a.clipboard:
+        value = subprocess.run(["pbpaste"], capture_output=True, text=True, check=True).stdout.strip()
+    else:
+        value = secrets.token_urlsafe(a.generate)
+    if not value:
+        ap.error("empty value")
+    if re.search(r"[\s#\"'$\\]", value):
+        value = '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    line = f"{a.name}={value}\n"
+    lines = open(a.file).readlines() if os.path.exists(a.file) else []
+    rx = re.compile(rf"^\s*(export\s+)?{re.escape(a.name)}\s*=")
+    out, replaced = [], False
+    for l in lines:
+        if rx.match(l):
+            if not replaced:
+                out.append(("export " if l.lstrip().startswith("export ") else "") + line)
+                replaced = True
+            continue
+        out.append(l)
+    if not replaced:
+        if out and not out[-1].endswith("\n"):
+            out[-1] += "\n"
+        out.append(line)
+    fd = os.open(a.file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.writelines(out)
+    raw = sg.parse_env_file(a.file).get(a.name, "")
+    print(f"{'updated' if replaced else 'added'} {a.name} in {a.file}  {sg.fingerprint(raw)}")
+
+
+if __name__ == "__main__":
+    main()

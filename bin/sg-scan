@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""Scan Claude Code transcripts for secrets that already reached a chat.
+
+  sg-scan [PATH...] [--project DIR...]
+
+PATH defaults to ~/.claude/projects. --project adds that project's .env values
+to the search (known formats are always searched). Prints file, label and count,
+never the values. Use it to decide what to rotate.
+"""
+
+import argparse
+import os
+import re
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "lib"))
+import secret_guard as sg  # noqa: E402
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("paths", nargs="*", default=[os.path.expanduser("~/.claude/projects")])
+    ap.add_argument("--project", action="append", default=[])
+    a = ap.parse_args()
+    known = {}
+    for d in a.project:
+        known.update(sg.collect_known(d, environ={}))
+    r = sg.Redactor(known, sg.load_allowlist())
+    files = []
+    for p in a.paths:
+        if os.path.isdir(p):
+            for root, _, names in os.walk(p):
+                files += [os.path.join(root, n) for n in names if n.endswith(".jsonl")]
+        else:
+            files.append(p)
+    total = 0
+    for path in sorted(files):
+        counts = {}
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                text = line.replace("\\n", "\n")
+                masked = r.redact(text)
+                if masked == text:
+                    continue
+                for label in set(re.findall(r"«([A-Z0-9_]+)»", masked)):
+                    n = masked.count(f"«{label}»") - text.count(f"«{label}»")
+                    if n > 0:
+                        counts[label] = counts.get(label, 0) + n
+        if counts:
+            total += 1
+            print(path)
+            for label, n in sorted(counts.items()):
+                print(f"  {label}: {n}")
+    print(f"{total} of {len(files)} transcripts contain possible secrets", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
