@@ -24,6 +24,7 @@ DUMMY_VALUES = {
     "password", "postgres", "changeme", "secret", "example", "development", "production",
     "staging", "test", "localhost", "root", "admin", "redis", "mysql", "guest", "default",
     "true", "false", "yes", "no", "null", "none", "undefined", "xxxxxxxx", "your-key-here",
+    "placeholder", "dummy", "fake", "sample", "replaceme", "todo", "tbd", "label",
 }
 MIN_LEN = 8
 PATH_RE = re.compile(

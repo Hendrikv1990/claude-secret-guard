@@ -105,6 +105,11 @@ class RedactTest(unittest.TestCase):
         line = "postgres://postgres:postgres@localhost:5432/dev"
         self.assertEqual(self.r.redact(line), line)
 
+    def test_placeholder_values_are_not_secrets(self):
+        import secret_guard as sg
+        for word in ("placeholder", "label", "dummy"):
+            self.assertFalse(sg.is_secret("SOME_API_KEY", word))
+
     def test_known_formats(self):
         for value, label in [
             (FAKE_AWS, "AWS_ACCESS_KEY_ID"),
